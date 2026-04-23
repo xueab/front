@@ -1,7 +1,18 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { login as loginApi } from '@/api/auth';
-import type { LoginRequest, LoginResponseData } from '@/types/api';
+import {
+  getProfile as getProfileApi,
+  updateProfile as updateProfileApi,
+  uploadAvatar as uploadAvatarApi,
+  changePassword as changePasswordApi,
+} from '@/api/user';
+import type {
+  LoginRequest,
+  LoginResponseData,
+  UserProfileVO,
+  ChangePasswordRequest,
+} from '@/types/api';
 
 const TOKEN_KEY = 'token';
 const USER_INFO_KEY = 'userInfo';
@@ -36,6 +47,15 @@ export const useUserStore = defineStore('user', () => {
   const userId = ref<number | null>(stored?.userId ?? null);
   const phone = ref<string>(stored?.phone || '');
 
+  function persist() {
+    persistUserInfo({
+      nickname: nickname.value,
+      avatar: avatar.value,
+      userId: userId.value ?? 0,
+      phone: phone.value,
+    });
+  }
+
   function setUserInfo(data: LoginResponseData, phoneValue?: string) {
     token.value = data.token;
     nickname.value = data.nickname;
@@ -46,12 +66,15 @@ export const useUserStore = defineStore('user', () => {
     }
 
     localStorage.setItem(TOKEN_KEY, data.token);
-    persistUserInfo({
-      nickname: data.nickname,
-      avatar: data.avatar,
-      userId: data.userId,
-      phone: phone.value,
-    });
+    persist();
+  }
+
+  function applyProfile(profile: UserProfileVO) {
+    nickname.value = profile.nickname ?? '';
+    avatar.value = profile.avatar ?? null;
+    userId.value = profile.userId;
+    phone.value = profile.phone ?? '';
+    persist();
   }
 
   async function login(payload: LoginRequest): Promise<LoginResponseData> {
@@ -60,22 +83,29 @@ export const useUserStore = defineStore('user', () => {
     return res.data;
   }
 
-  function updateProfile(payload: {
-    nickname?: string;
-    avatar?: string | null;
-  }) {
-    if (payload.nickname !== undefined) {
-      nickname.value = payload.nickname;
-    }
-    if (payload.avatar !== undefined) {
-      avatar.value = payload.avatar;
-    }
-    persistUserInfo({
-      nickname: nickname.value,
-      avatar: avatar.value,
-      userId: userId.value ?? 0,
-      phone: phone.value,
-    });
+  async function fetchProfile(): Promise<UserProfileVO> {
+    const res = await getProfileApi();
+    applyProfile(res.data);
+    return res.data;
+  }
+
+  async function updateProfile(payload: {
+    nickname: string;
+  }): Promise<UserProfileVO> {
+    const res = await updateProfileApi({ nickname: payload.nickname });
+    applyProfile(res.data);
+    return res.data;
+  }
+
+  async function uploadAvatar(file: File): Promise<string> {
+    const res = await uploadAvatarApi(file);
+    avatar.value = res.data.avatar;
+    persist();
+    return res.data.avatar;
+  }
+
+  async function changePassword(payload: ChangePasswordRequest): Promise<void> {
+    await changePasswordApi(payload);
   }
 
   function logout() {
@@ -97,7 +127,10 @@ export const useUserStore = defineStore('user', () => {
     phone,
     setUserInfo,
     login,
+    fetchProfile,
     updateProfile,
+    uploadAvatar,
+    changePassword,
     logout,
   };
 });

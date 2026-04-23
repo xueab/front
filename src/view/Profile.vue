@@ -1,5 +1,5 @@
 <template>
-  <div class="profile-view">
+  <div class="profile-view" v-loading="loading">
     <div class="page-header">
       <h2 class="page-title">个人资料</h2>
       <p class="page-subtitle">一个更懂自己的你，从这里开始 ✨</p>
@@ -7,20 +7,25 @@
 
     <el-card class="profile-card" shadow="never">
       <div class="avatar-block">
-        <el-avatar :size="96" :src="form.avatar || defaultAvatar" class="avatar-large" />
+        <el-avatar
+          :size="96"
+          :src="resolveAssetUrl(form.avatar) || defaultAvatar"
+          class="avatar-large"
+        />
         <el-upload
           class="upload-trigger"
           :show-file-list="false"
           :auto-upload="false"
           :on-change="handleAvatarChange"
           accept="image/*"
+          :disabled="uploading"
         >
-          <el-button plain size="small" round>
-            <el-icon><Camera /></el-icon>
-            <span>更换头像</span>
+          <el-button plain size="small" round :loading="uploading">
+            <el-icon v-if="!uploading"><Camera /></el-icon>
+            <span>{{ uploading ? '上传中...' : '更换头像' }}</span>
           </el-button>
         </el-upload>
-        <div class="avatar-tip">支持 JPG / PNG，建议尺寸 200×200</div>
+        <div class="avatar-tip">支持 JPG / PNG，建议尺寸 200×200，5MB 以内</div>
       </div>
 
       <el-form
@@ -51,13 +56,69 @@
         </el-form-item>
 
         <div class="form-actions">
-          <el-button plain @click="resetForm">重置</el-button>
-          <el-button type="primary" :loading="saving" @click="handleSave">
-            保存修改
+          <el-button plain @click="openChangePassword">
+            <el-icon><Lock /></el-icon>
+            <span>修改密码</span>
           </el-button>
+          <div class="right-actions">
+            <el-button plain @click="resetForm">重置</el-button>
+            <el-button type="primary" :loading="saving" @click="handleSave">
+              保存修改
+            </el-button>
+          </div>
         </div>
       </el-form>
     </el-card>
+
+    <el-dialog
+      v-model="pwdDialogVisible"
+      title="修改密码"
+      width="420px"
+      destroy-on-close
+    >
+      <el-form
+        ref="pwdFormRef"
+        :model="pwdForm"
+        :rules="pwdRules"
+        label-position="top"
+        size="large"
+      >
+        <el-form-item label="当前密码" prop="oldPassword">
+          <el-input
+            v-model="pwdForm.oldPassword"
+            type="password"
+            show-password
+            placeholder="请输入当前登录密码"
+          />
+        </el-form-item>
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input
+            v-model="pwdForm.newPassword"
+            type="password"
+            show-password
+            placeholder="6-20 位，新的开始"
+          />
+        </el-form-item>
+        <el-form-item label="确认新密码" prop="confirmPassword">
+          <el-input
+            v-model="pwdForm.confirmPassword"
+            type="password"
+            show-password
+            placeholder="请再次输入新密码"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="pwdDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="changingPwd"
+          @click="handleChangePassword"
+        >
+          确认修改
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -69,8 +130,9 @@ import {
   type FormRules,
   type UploadFile,
 } from 'element-plus';
-import { Camera, Phone } from '@element-plus/icons-vue';
+import { Camera, Phone, Lock } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { resolveAssetUrl } from '@/utils/request';
 
 const userStore = useUserStore();
 
@@ -78,12 +140,23 @@ const defaultAvatar =
   'https://api.dicebear.com/7.x/thumbs/svg?seed=heart&backgroundColor=bae6fd,a5f3fc,dbeafe';
 
 const formRef = ref<FormInstance>();
+const pwdFormRef = ref<FormInstance>();
+const loading = ref(false);
 const saving = ref(false);
+const uploading = ref(false);
+const changingPwd = ref(false);
+const pwdDialogVisible = ref(false);
 
 const form = reactive({
   phone: '',
   nickname: '',
   avatar: '' as string,
+});
+
+const pwdForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: '',
 });
 
 const rules: FormRules = {
@@ -93,18 +166,51 @@ const rules: FormRules = {
   ],
 };
 
-function loadFromStore() {
-  form.phone = userStore.phone || '138****0000';
-  form.nickname = userStore.nickname || '温柔的朋友';
+const pwdRules: FormRules = {
+  oldPassword: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '新密码长度应为 6-20 个字符', trigger: 'blur' },
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入新密码', trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        if (value !== pwdForm.newPassword) {
+          callback(new Error('两次输入的密码不一致'));
+        } else {
+          callback();
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+};
+
+function syncFormFromStore() {
+  form.phone = userStore.phone || '';
+  form.nickname = userStore.nickname || '';
   form.avatar = userStore.avatar || '';
 }
 
+async function loadProfile() {
+  loading.value = true;
+  try {
+    await userStore.fetchProfile();
+    syncFormFromStore();
+  } catch {
+    syncFormFromStore();
+  } finally {
+    loading.value = false;
+  }
+}
+
 function resetForm() {
-  loadFromStore();
+  syncFormFromStore();
   ElMessage.info('已重置为当前资料');
 }
 
-function handleAvatarChange(file: UploadFile) {
+async function handleAvatarChange(file: UploadFile) {
   const raw = file.raw;
   if (!raw) return;
   if (!raw.type.startsWith('image/')) {
@@ -115,12 +221,17 @@ function handleAvatarChange(file: UploadFile) {
     ElMessage.error('图片大小不能超过 5MB');
     return;
   }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    form.avatar = (e.target?.result as string) || '';
-    ElMessage.success('头像已预览，点击保存生效');
-  };
-  reader.readAsDataURL(raw);
+
+  uploading.value = true;
+  try {
+    const avatarUrl = await userStore.uploadAvatar(raw as File);
+    form.avatar = avatarUrl;
+    ElMessage.success('头像已更新');
+  } catch {
+    // 全局拦截器已经提示过错误
+  } finally {
+    uploading.value = false;
+  }
 }
 
 async function handleSave() {
@@ -129,16 +240,45 @@ async function handleSave() {
   if (!valid) return;
 
   saving.value = true;
-  await new Promise((resolve) => setTimeout(resolve, 800));
-  userStore.updateProfile({
-    nickname: form.nickname,
-    avatar: form.avatar || null,
-  });
-  saving.value = false;
-  ElMessage.success('资料已更新');
+  try {
+    await userStore.updateProfile({ nickname: form.nickname });
+    syncFormFromStore();
+    ElMessage.success('资料已更新');
+  } catch {
+    // 异常已全局提示
+  } finally {
+    saving.value = false;
+  }
 }
 
-onMounted(loadFromStore);
+function openChangePassword() {
+  pwdForm.oldPassword = '';
+  pwdForm.newPassword = '';
+  pwdForm.confirmPassword = '';
+  pwdDialogVisible.value = true;
+}
+
+async function handleChangePassword() {
+  if (!pwdFormRef.value) return;
+  const valid = await pwdFormRef.value.validate().catch(() => false);
+  if (!valid) return;
+
+  changingPwd.value = true;
+  try {
+    await userStore.changePassword({
+      oldPassword: pwdForm.oldPassword,
+      newPassword: pwdForm.newPassword,
+    });
+    ElMessage.success('密码修改成功，请牢记新密码');
+    pwdDialogVisible.value = false;
+  } catch {
+    // 异常已全局提示
+  } finally {
+    changingPwd.value = false;
+  }
+}
+
+onMounted(loadProfile);
 </script>
 
 <style scoped>
@@ -207,7 +347,14 @@ onMounted(loadFromStore);
 .form-actions {
   margin-top: 8px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.right-actions {
+  display: flex;
   gap: 12px;
 }
 </style>

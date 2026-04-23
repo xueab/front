@@ -9,8 +9,25 @@ import type { ApiResponse } from '@/types/api';
 
 const TOKEN_KEY = 'token';
 
+export const API_BASE_URL = 'http://localhost:8080';
+
+/**
+ * 把后端返回的相对静态资源地址（如 /uploads/avatar/xxx.png）
+ * 补齐成可访问的完整 URL。
+ * - 已经是 http(s) 或 data: 开头的直接返回
+ * - 为空或 null 返回空字符串
+ */
+export function resolveAssetUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (/^(https?:)?\/\//i.test(url) || url.startsWith('data:')) {
+    return url;
+  }
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `${API_BASE_URL}${path}`;
+}
+
 const request: AxiosInstance = axios.create({
-  baseURL: 'http://localhost:8080',
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

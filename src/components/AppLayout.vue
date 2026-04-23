@@ -24,7 +24,7 @@
             <div class="user-avatar">
               <el-avatar
                 :size="38"
-                :src="userStore.avatar || defaultAvatar"
+                :src="resolveAssetUrl(userStore.avatar) || defaultAvatar"
                 :icon="UserFilled"
                 class="avatar-ring"
               />
@@ -57,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -65,10 +66,19 @@ import {
   SwitchButton,
 } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { resolveAssetUrl } from '@/utils/request';
 
 const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
+
+onMounted(() => {
+  if (userStore.token) {
+    userStore.fetchProfile().catch(() => {
+      // 静默忽略，失败时仍可用本地缓存显示
+    });
+  }
+});
 
 const defaultAvatar =
   'https://api.dicebear.com/7.x/thumbs/svg?seed=heart&backgroundColor=bae6fd,a5f3fc,dbeafe';

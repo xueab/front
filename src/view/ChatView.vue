@@ -72,7 +72,7 @@
             <el-avatar
               v-if="m.role === 'user'"
               :size="36"
-              :src="userStore.avatar || userAvatarDefault"
+              :src="resolveAssetUrl(userStore.avatar) || userAvatarDefault"
               class="msg-avatar"
             />
           </div>
@@ -106,6 +106,7 @@
 import { computed, nextTick, ref, onMounted } from 'vue';
 import { ChatDotRound, Plus } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { resolveAssetUrl } from '@/utils/request';
 
 interface ChatMessage {
   id: number;

@@ -32,3 +32,24 @@ export interface LoginResponseData {
   avatar: string | null;
   userId: number;
 }
+
+export interface UserProfileVO {
+  userId: number;
+  phone: string;
+  nickname: string;
+  avatar: string | null;
+  createdAt: string | null;
+}
+
+export interface UpdateProfileRequest {
+  nickname: string;
+}
+
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+}
+
+export interface UploadAvatarResponse {
+  avatar: string;
+}
