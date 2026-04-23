@@ -12,7 +12,7 @@
       </el-radio-group>
     </div>
 
-    <div class="summary-grid">
+    <div class="summary-grid" v-loading="loading">
       <div
         v-for="card in summaryCards"
         :key="card.label"
@@ -35,14 +35,15 @@
       <div ref="chartRef" class="chart-area"></div>
     </el-card>
 
-    <el-card class="insight-card" shadow="never">
+    <el-card class="insight-card" shadow="never" v-loading="loading">
       <div class="section-title">
         <el-icon><Sunny /></el-icon>
         <span>本周小洞察</span>
       </div>
-      <ul class="insight-list">
+      <ul class="insight-list" v-if="insights.length">
         <li v-for="(tip, idx) in insights" :key="idx">{{ tip }}</li>
       </ul>
+      <el-empty v-else description="暂无洞察数据" :image-size="80" />
     </el-card>
   </div>
 </template>
@@ -51,100 +52,71 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import * as echarts from 'echarts';
 import { Sunny, TrendCharts } from '@element-plus/icons-vue';
+import { getMoodTrend, getMoodSummary, getMoodInsights } from '@/api/mood';
+import type { MoodRange, MoodSummaryVO } from '@/types/api';
 
 const chartRef = ref<HTMLElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
 const loading = ref(false);
-const range = ref(7);
+const range = ref<MoodRange>(7);
 const dates = ref<string[]>([]);
-const scores = ref<number[]>([]);
+const scores = ref<Array<number | null>>([]);
+const summary = ref<MoodSummaryVO>({ average: 0, max: 0, min: 0, days: 0 });
+const insights = ref<string[]>([]);
 
-const mockScores7 = [5, 6, 4, 7, 8, 6, 7];
-const mockScores14 = [4, 5, 6, 4, 5, 7, 6, 5, 6, 4, 7, 8, 6, 7];
-const mockScores30 = Array.from({ length: 30 }, (_, i) => {
-  const base = 5 + Math.sin(i / 3) * 2;
-  return Math.max(1, Math.min(10, Math.round(base + (i % 4 === 0 ? 1 : 0))));
-});
-
-function genDates(n: number) {
-  const arr: string[] = [];
-  const today = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const pad = (v: number) => v.toString().padStart(2, '0');
-    arr.push(`${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
-  }
-  return arr;
-}
-
-function loadData() {
+async function loadData() {
   loading.value = true;
-  setTimeout(() => {
-    dates.value = genDates(range.value);
-    if (range.value === 7) scores.value = [...mockScores7];
-    else if (range.value === 14) scores.value = [...mockScores14];
-    else scores.value = [...mockScores30];
-    loading.value = false;
+  try {
+    const r = range.value;
+    const [trendRes, summaryRes, insightsRes] = await Promise.all([
+      getMoodTrend(r),
+      getMoodSummary(r),
+      getMoodInsights(r),
+    ]);
+    dates.value = trendRes.data?.dates ?? [];
+    scores.value = trendRes.data?.scores ?? [];
+    summary.value = summaryRes.data ?? {
+      average: 0,
+      max: 0,
+      min: 0,
+      days: 0,
+    };
+    insights.value = insightsRes.data?.tips ?? [];
     nextTick(renderChart);
-  }, 300);
+  } finally {
+    loading.value = false;
+  }
 }
 
 const summaryCards = computed(() => {
-  const arr = scores.value;
-  const avg =
-    arr.length === 0
-      ? 0
-      : Math.round((arr.reduce((s, x) => s + x, 0) / arr.length) * 10) / 10;
-  const max = arr.length ? Math.max(...arr) : 0;
-  const min = arr.length ? Math.min(...arr) : 0;
+  const s = summary.value;
   return [
     {
       label: '平均分',
-      value: avg,
+      value: s.average ?? 0,
       emoji: '💫',
       bg: 'linear-gradient(135deg, #e0f2fe, #bae6fd)',
     },
     {
       label: '最高分',
-      value: max,
+      value: s.max ?? 0,
       emoji: '🌈',
       bg: 'linear-gradient(135deg, #cffafe, #a5f3fc)',
     },
     {
       label: '最低分',
-      value: min,
+      value: s.min ?? 0,
       emoji: '🌙',
       bg: 'linear-gradient(135deg, #dbeafe, #bfdbfe)',
     },
     {
       label: '记录天数',
-      value: arr.length,
+      value: s.days ?? 0,
       emoji: '📅',
       bg: 'linear-gradient(135deg, #ecfeff, #cffafe)',
     },
   ];
-});
-
-const insights = computed(() => {
-  const arr = scores.value;
-  if (arr.length === 0) return ['暂无数据，先去写几篇日记吧。'];
-  const avg = arr.reduce((s, x) => s + x, 0) / arr.length;
-  const tips: string[] = [];
-  if (avg >= 7) {
-    tips.push('最近整体情绪不错，记得把这些好感受留给未来的自己 ✨');
-  } else if (avg >= 5) {
-    tips.push('情绪平稳，保持节奏。偶尔给自己一点小惊喜也很棒。');
-  } else {
-    tips.push('最近有点辛苦了，记得多给自己一些照顾与休息 🌿');
-  }
-  const max = Math.max(...arr);
-  const maxIdx = arr.indexOf(max);
-  tips.push(`最开心的一天是 ${dates.value[maxIdx]}，那天发生了什么美好的事呢？`);
-  const min = Math.min(...arr);
-  tips.push(`最低的分数是 ${min}，允许自己有情绪，它们都会慢慢过去。`);
-  return tips;
 });
 
 function renderChart() {
@@ -161,7 +133,9 @@ function renderChart() {
       textStyle: { color: '#334155' },
       formatter: (params: any[]) => {
         const p = params[0];
-        return `${p.axisValue}<br/>情绪分数：<strong style="color:#0ea5e9">${p.value}</strong> / 10`;
+        const val =
+          p.value === null || p.value === undefined ? '暂无记录' : `${p.value} / 10`;
+        return `${p.axisValue}<br/>情绪分数：<strong style="color:#0ea5e9">${val}</strong>`;
       },
     },
     xAxis: {
@@ -185,6 +159,7 @@ function renderChart() {
         smooth: true,
         symbol: 'circle',
         symbolSize: 10,
+        connectNulls: true,
         data: scores.value,
         lineStyle: {
           width: 3,
