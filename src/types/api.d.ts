@@ -125,3 +125,44 @@ export interface MoodSummaryVO {
 export interface MoodInsightVO {
   tips: string[];
 }
+
+// ===================== AI 对话 =====================
+export interface ChatSessionVO {
+  id: number;
+  title: string;
+  status: number;
+  createdAt: string;
+}
+
+export interface CreateChatSessionRequest {
+  title: string;
+}
+
+export interface CreateChatSessionResponse {
+  sessionId: number;
+}
+
+export type ChatRole = 'user' | 'assistant';
+
+export interface ChatMessageVO {
+  id: number;
+  role: ChatRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface SendChatMessageRequest {
+  content: string;
+}
+
+// SSE 流式事件 payload
+export type ChatStreamEventType = 'delta' | 'done' | 'error';
+
+export interface ChatStreamEvent {
+  type: ChatStreamEventType;
+  content?: string;
+  requestId?: string;
+  errorCode?: string;
+  message?: string;
+  retryable?: boolean;
+}

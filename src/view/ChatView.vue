@@ -11,12 +11,29 @@
             text
             circle
             size="small"
+            :disabled="sending"
             @click="newSession"
           >
             <el-icon><Plus /></el-icon>
           </el-button>
         </div>
         <el-scrollbar class="session-list">
+          <div
+            v-if="activeId === null"
+            class="session-item"
+            :class="{ active: true }"
+          >
+            <div class="session-avatar">
+              <el-avatar :size="40" :src="aiAvatar" />
+            </div>
+            <div class="session-info">
+              <div class="session-row">
+                <span class="session-name">新的对话</span>
+                <span class="session-time">刚刚</span>
+              </div>
+              <div class="session-preview">说点什么开始吧～</div>
+            </div>
+          </div>
           <div
             v-for="s in sessions"
             :key="s.id"
@@ -32,8 +49,11 @@
                 <span class="session-name">{{ s.title }}</span>
                 <span class="session-time">{{ s.time }}</span>
               </div>
-              <div class="session-preview">{{ s.preview }}</div>
+              <div class="session-preview">{{ s.preview || '点击查看对话' }}</div>
             </div>
+          </div>
+          <div v-if="sessions.length === 0 && activeId !== null" class="session-empty">
+            还没有历史对话
           </div>
         </el-scrollbar>
       </aside>
@@ -51,6 +71,11 @@
         </div>
 
         <el-scrollbar ref="scrollRef" class="chat-messages" view-class="chat-messages-inner">
+          <div v-if="loadingMessages" class="messages-loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>正在加载对话…</span>
+          </div>
+
           <div
             v-for="m in currentMessages"
             :key="m.id"
@@ -64,10 +89,16 @@
               class="msg-avatar"
             />
             <div class="message-bubble">
-              <span v-if="!m.pending">{{ m.content }}</span>
-              <span v-else class="typing">
+              <div
+                v-if="m.content && m.role === 'ai'"
+                class="markdown-body"
+                v-html="renderMarkdown(m.content)"
+              ></div>
+              <span v-else-if="m.content">{{ m.content }}</span>
+              <span v-if="m.pending && !m.content" class="typing">
                 <i></i><i></i><i></i>
               </span>
+              <span v-else-if="m.pending" class="cursor-blink">▍</span>
             </div>
             <el-avatar
               v-if="m.role === 'user'"
@@ -76,14 +107,24 @@
               class="msg-avatar"
             />
           </div>
+
+          <div
+            v-if="!loadingMessages && currentMessages.length === 0"
+            class="messages-empty"
+          >
+            <el-avatar :size="56" :src="aiAvatar" />
+            <div class="empty-title">嗨，我是小语</div>
+            <div class="empty-desc">深呼吸，慢慢来，你想从哪里开始？</div>
+          </div>
         </el-scrollbar>
 
         <div class="chat-input">
           <el-input
             v-model="draft"
             type="textarea"
-            :rows="2"
+            :autosize="{ minRows: 2 }"
             resize="none"
+            :disabled="sending"
             placeholder="写点什么吧，我会认真听 🌙  （Enter 发送，Shift + Enter 换行）"
             @keydown="onKeydown"
           />
@@ -91,7 +132,7 @@
             type="primary"
             class="send-btn"
             :loading="sending"
-            :disabled="!draft.trim()"
+            :disabled="!draft.trim() || sending"
             @click="sendMessage"
           >
             发送
@@ -103,27 +144,64 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, onMounted } from 'vue';
-import { ChatDotRound, Plus } from '@element-plus/icons-vue';
+import { computed, nextTick, reactive, ref, onMounted, onBeforeUnmount } from 'vue';
+import { ChatDotRound, Plus, Loading } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
+import MarkdownIt from 'markdown-it';
 import { useUserStore } from '@/stores/user';
 import { resolveAssetUrl } from '@/utils/request';
+import {
+  createChatSession,
+  getChatSessions,
+  getChatMessages,
+  streamChatReply,
+} from '@/api/chat';
+import type { ChatSessionVO, ChatMessageVO } from '@/types/api';
 
 interface ChatMessage {
+  /** 本地唯一 id，后端消息使用后端 id；前端临时消息用负数 */
   id: number;
   role: 'user' | 'ai';
   content: string;
   pending?: boolean;
 }
 
-interface ChatSession {
+interface ChatSessionItem {
   id: number;
   title: string;
-  preview: string;
+  createdAt: string;
   time: string;
-  messages: ChatMessage[];
+  preview: string;
 }
 
 const userStore = useUserStore();
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+});
+
+const defaultLinkRender =
+  md.renderer.rules.link_open ||
+  function (tokens, idx, options, _env, self) {
+    return self.renderToken(tokens, idx, options);
+  };
+md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
+  const token = tokens[idx];
+  const targetIdx = token.attrIndex('target');
+  if (targetIdx < 0) token.attrPush(['target', '_blank']);
+  else token.attrs![targetIdx][1] = '_blank';
+  const relIdx = token.attrIndex('rel');
+  if (relIdx < 0) token.attrPush(['rel', 'noopener noreferrer']);
+  else token.attrs![relIdx][1] = 'noopener noreferrer';
+  return defaultLinkRender(tokens, idx, options, env, self);
+};
+
+function renderMarkdown(content: string): string {
+  if (!content) return '';
+  return md.render(content);
+}
 
 const aiAvatar =
   'https://api.dicebear.com/7.x/bottts-neutral/svg?seed=xiaoyu&backgroundColor=bae6fd';
@@ -134,89 +212,102 @@ const scrollRef = ref<{ setScrollTop: (v: number) => void; wrapRef?: HTMLElement
   null,
 );
 
-const sessions = ref<ChatSession[]>([
-  {
-    id: 1,
-    title: '今天有点累',
-    preview: '嗯，我在。慢慢说，不用着急。',
-    time: '刚刚',
-    messages: [
-      {
-        id: 11,
-        role: 'ai',
-        content: '你好呀，我是小语。今天想聊点什么呢？我会一直在这里听你说 🌿',
-      },
-      {
-        id: 12,
-        role: 'user',
-        content: '今天加班到很晚，脑子有点转不动了。',
-      },
-      {
-        id: 13,
-        role: 'ai',
-        content:
-          '辛苦了，先深呼吸一下。被疲惫包围的时候，先照顾身体，再处理心情。有没有哪件事让你特别在意？',
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: '关于失眠',
-    preview: '睡不着的夜，可以说说窗外的月光。',
-    time: '昨天',
-    messages: [
-      {
-        id: 21,
-        role: 'ai',
-        content: '失眠的夜很漫长，但你并不孤单，我在这里陪你。',
-      },
-    ],
-  },
-  {
-    id: 3,
-    title: '想要改变',
-    preview: '每一个小小的坚持，都算数。',
-    time: '4月12日',
-    messages: [
-      {
-        id: 31,
-        role: 'ai',
-        content: '想做出改变的你，已经比昨天更勇敢了一些哦 ✨',
-      },
-    ],
-  },
-]);
-
-const activeId = ref(sessions.value[0].id);
+const sessions = ref<ChatSessionItem[]>([]);
+/** null 表示「新对话未保存」状态，第一次发送时才创建会话 */
+const activeId = ref<number | null>(null);
 const draft = ref('');
 const sending = ref(false);
+const loadingMessages = ref(false);
 
-const currentMessages = computed(() => {
-  const s = sessions.value.find((x) => x.id === activeId.value);
-  return s ? s.messages : [];
+/** 按 sessionId 缓存消息列表；key='new' 保存未创建会话前的临时消息 */
+const messagesMap = ref<Record<string, ChatMessage[]>>({ new: [] });
+
+let tempMsgSeq = -1;
+function nextTempId() {
+  return tempMsgSeq--;
+}
+
+let currentAbort: AbortController | null = null;
+const STREAM_APPEND_DELAY_MS = 45;
+
+const currentMessages = computed<ChatMessage[]>(() => {
+  const key = activeId.value === null ? 'new' : String(activeId.value);
+  return messagesMap.value[key] || [];
 });
 
-function activateSession(id: number) {
+function formatTime(createdAt: string): string {
+  if (!createdAt) return '';
+  // "2026-04-23 16:00:00" -> "04-23 16:00"
+  const m = createdAt.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return createdAt;
+  return `${m[2]}-${m[3]} ${m[4]}:${m[5]}`;
+}
+
+function toLocalMessage(m: ChatMessageVO): ChatMessage {
+  return {
+    id: m.id,
+    role: m.role === 'user' ? 'user' : 'ai',
+    content: m.content,
+  };
+}
+
+function mapSession(s: ChatSessionVO): ChatSessionItem {
+  return {
+    id: s.id,
+    title: s.title,
+    createdAt: s.createdAt,
+    time: formatTime(s.createdAt),
+    preview: '',
+  };
+}
+
+function updateSessionPreview(sessionId: number, preview: string) {
+  const s = sessions.value.find((x) => x.id === sessionId);
+  if (s) {
+    s.preview = preview.slice(0, 30);
+  }
+}
+
+async function loadSessions() {
+  try {
+    const res = await getChatSessions();
+    sessions.value = (res.data || []).map(mapSession);
+  } catch {
+    // 错误已由 request 拦截器提示
+  }
+}
+
+async function activateSession(id: number) {
+  if (sending.value) {
+    ElMessage.warning('请等待当前回复结束');
+    return;
+  }
   activeId.value = id;
+  const key = String(id);
+  if (!messagesMap.value[key]) {
+    loadingMessages.value = true;
+    try {
+      const res = await getChatMessages(id);
+      messagesMap.value[key] = (res.data || []).map(toLocalMessage);
+      const last = [...(res.data || [])].reverse().find(Boolean);
+      if (last) updateSessionPreview(id, last.content);
+    } catch {
+      messagesMap.value[key] = [];
+    } finally {
+      loadingMessages.value = false;
+    }
+  }
   scrollToBottom();
 }
 
 function newSession() {
-  const id = Date.now();
-  sessions.value.unshift({
-    id,
-    title: '新的对话',
-    preview: '我在这里，开始说说吧。',
-    time: '刚刚',
-    messages: [
-      {
-        id: id + 1,
-        role: 'ai',
-        content: '嗨，我是小语。深呼吸，慢慢来，你想从哪里开始？',
-      },
-    ],
-  });
-  activeId.value = id;
+  if (sending.value) {
+    ElMessage.warning('请等待当前回复结束');
+    return;
+  }
+  activeId.value = null;
+  messagesMap.value.new = [];
+  scrollToBottom();
 }
 
 function scrollToBottom() {
@@ -228,13 +319,26 @@ function scrollToBottom() {
   });
 }
 
-const aiReplies = [
-  '嗯，我听着呢。你说的这些，我都有认真记下。',
-  '这样的感觉一定不容易，谢谢你愿意告诉我。',
-  '先给自己一点点时间，允许情绪流动。可以试着深呼吸三次 🌿',
-  '你并不孤单，我一直都在。愿意多聊一点吗？',
-  '先把自己照顾好，其他的事可以慢慢来。',
-];
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function splitStreamChunk(chunk: string, size = 2): string[] {
+  const chars = Array.from(chunk);
+  const parts: string[] = [];
+  for (let i = 0; i < chars.length; i += size) {
+    parts.push(chars.slice(i, i + size).join(''));
+  }
+  return parts;
+}
+
+async function appendStreamChunk(target: ChatMessage, chunk: string) {
+  for (const part of splitStreamChunk(chunk)) {
+    target.content += part;
+    scrollToBottom();
+    await sleep(STREAM_APPEND_DELAY_MS);
+  }
+}
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -243,47 +347,126 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+async function ensureSessionId(firstContent: string): Promise<number | null> {
+  if (activeId.value !== null) return activeId.value;
+
+  try {
+    const title = firstContent.trim().slice(0, 20) || '新对话';
+    const res = await createChatSession(title);
+    const newId = res.data.sessionId;
+
+    sessions.value.unshift({
+      id: newId,
+      title,
+      createdAt: '',
+      time: '刚刚',
+      preview: '',
+    });
+
+    // 把 'new' 里已有的本地消息迁移到正式 session key 下
+    messagesMap.value[String(newId)] = messagesMap.value.new || [];
+    messagesMap.value.new = [];
+    activeId.value = newId;
+    return newId;
+  } catch (err) {
+    console.error('创建会话失败', err);
+    return null;
+  }
+}
+
 async function sendMessage() {
   const text = draft.value.trim();
   if (!text) return;
-  const session = sessions.value.find((s) => s.id === activeId.value);
-  if (!session) return;
+  if (sending.value) return;
 
+  sending.value = true;
+  draft.value = '';
+
+  // 先把用户消息插入本地（暂时放在 new 或当前 session 下）
+  const tempKey = activeId.value === null ? 'new' : String(activeId.value);
+  const list = (messagesMap.value[tempKey] ||= []);
   const userMsg: ChatMessage = {
-    id: Date.now(),
+    id: nextTempId(),
     role: 'user',
     content: text,
   };
-  session.messages.push(userMsg);
-  session.preview = text.slice(0, 20);
-  session.time = '刚刚';
-  draft.value = '';
-  sending.value = true;
+  list.push(userMsg);
   scrollToBottom();
 
-  const pendingMsg: ChatMessage = {
-    id: Date.now() + 1,
+  // 确保有 sessionId（没有则现场创建）
+  const sessionId = await ensureSessionId(text);
+  if (sessionId === null) {
+    sending.value = false;
+    return;
+  }
+
+  // 创建一条 assistant 占位消息（等收到第一个 delta 再显示 content）
+  // 必须用 reactive 包裹：否则后续在流式回调里对 assistantMsg.content 的赋值
+  // 会绕过 push 进数组后生成的 Proxy，无法触发视图更新，导致内容要等刷新才出现。
+  const messages = messagesMap.value[String(sessionId)];
+  const assistantMsg = reactive<ChatMessage>({
+    id: nextTempId(),
     role: 'ai',
     content: '',
     pending: true,
-  };
-  session.messages.push(pendingMsg);
+  });
+  messages.push(assistantMsg);
   scrollToBottom();
 
-  setTimeout(() => {
-    const reply = aiReplies[Math.floor(Math.random() * aiReplies.length)];
-    const target = session.messages.find((m) => m.id === pendingMsg.id);
-    if (target) {
-      target.content = reply;
-      target.pending = false;
+  // 建立 Abort 控制器，支持中断
+  currentAbort?.abort();
+  currentAbort = new AbortController();
+
+  const token = localStorage.getItem('token') || '';
+
+  try {
+    await streamChatReply(
+      sessionId,
+      text,
+      token,
+      async (chunk) => {
+        await appendStreamChunk(assistantMsg, chunk);
+      },
+      () => {
+        assistantMsg.pending = false;
+        updateSessionPreview(sessionId, assistantMsg.content);
+        scrollToBottom();
+      },
+      (message) => {
+        assistantMsg.pending = false;
+        if (!assistantMsg.content) {
+          // 还没有任何内容，则移除这条空消息，避免把错误信息当成回复
+          const idx = messages.findIndex((m) => m.id === assistantMsg.id);
+          if (idx !== -1) messages.splice(idx, 1);
+        }
+        ElMessage.error(message || '回复失败，请稍后再试');
+      },
+      currentAbort.signal,
+    );
+  } catch (err) {
+    // 网络层异常，onError 已处理；这里兜底
+    assistantMsg.pending = false;
+    if (!assistantMsg.content) {
+      const idx = messages.findIndex((m) => m.id === assistantMsg.id);
+      if (idx !== -1) messages.splice(idx, 1);
     }
-    session.preview = reply.slice(0, 20);
+    console.error('流式请求失败', err);
+  } finally {
     sending.value = false;
-    scrollToBottom();
-  }, 1000);
+    currentAbort = null;
+  }
 }
 
-onMounted(scrollToBottom);
+onMounted(async () => {
+  await loadSessions();
+  // 默认进入「新对话」状态，等待用户开始
+  activeId.value = null;
+  scrollToBottom();
+});
+
+onBeforeUnmount(() => {
+  currentAbort?.abort();
+});
 </script>
 
 <style scoped>
@@ -308,6 +491,8 @@ onMounted(scrollToBottom);
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, #f0f9ff, #ffffff);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar-header {
@@ -326,7 +511,9 @@ onMounted(scrollToBottom);
 }
 
 .session-list {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  height: 0;
 }
 
 .session-item {
@@ -379,10 +566,20 @@ onMounted(scrollToBottom);
   text-overflow: ellipsis;
 }
 
+.session-empty {
+  padding: 30px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--healing-muted);
+}
+
 .chat-main {
   display: flex;
   flex-direction: column;
   background: #fafdff;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -392,6 +589,7 @@ onMounted(scrollToBottom);
   padding: 14px 20px;
   background: #ffffff;
   border-bottom: 1px solid #e0f2fe;
+  flex-shrink: 0;
 }
 
 .chat-title {
@@ -416,12 +614,46 @@ onMounted(scrollToBottom);
 }
 
 .chat-messages {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  height: 0;
   background: linear-gradient(180deg, #f0f9ff, #ecfeff);
 }
 
 :deep(.chat-messages-inner) {
   padding: 20px;
+}
+
+.messages-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 30px 0;
+  color: var(--healing-muted);
+  font-size: 13px;
+}
+
+.messages-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: var(--healing-muted);
+  text-align: center;
+}
+
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e3a8a;
+  margin-top: 8px;
+}
+
+.empty-desc {
+  font-size: 13px;
 }
 
 .message {
@@ -432,7 +664,7 @@ onMounted(scrollToBottom);
 }
 
 .message-user {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
 }
 
 .message-bubble {
@@ -450,6 +682,121 @@ onMounted(scrollToBottom);
   background: #ffffff;
   color: #334155;
   border-bottom-left-radius: 4px;
+}
+
+.markdown-body {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.markdown-body :deep(p) {
+  margin: 0 0 8px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(strong) {
+  font-weight: 600;
+  color: #1e3a8a;
+}
+
+.markdown-body :deep(em) {
+  font-style: italic;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.markdown-body :deep(li) {
+  margin: 2px 0;
+  line-height: 1.7;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 10px 0 6px;
+  font-weight: 600;
+  color: #1e3a8a;
+  line-height: 1.4;
+}
+
+.markdown-body :deep(h1) {
+  font-size: 18px;
+}
+
+.markdown-body :deep(h2) {
+  font-size: 16px;
+}
+
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  font-size: 15px;
+}
+
+.markdown-body :deep(code) {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(96, 165, 250, 0.12);
+  color: #1e3a8a;
+  font-size: 13px;
+  font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+}
+
+.markdown-body :deep(pre) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.markdown-body :deep(pre code) {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.markdown-body :deep(blockquote) {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid #60a5fa;
+  background: rgba(186, 230, 253, 0.25);
+  color: #475569;
+  border-radius: 4px;
+}
+
+.markdown-body :deep(a) {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.markdown-body :deep(hr) {
+  margin: 10px 0;
+  border: none;
+  border-top: 1px solid #e0f2fe;
+}
+
+.markdown-body :deep(table) {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  padding: 6px 10px;
+  border: 1px solid #e0f2fe;
 }
 
 .message-user .message-bubble {
@@ -484,6 +831,19 @@ onMounted(scrollToBottom);
   animation-delay: 0.3s;
 }
 
+.cursor-blink {
+  display: inline-block;
+  margin-left: 2px;
+  color: #60a5fa;
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 @keyframes bounce {
   0%,
   60%,
@@ -504,11 +864,13 @@ onMounted(scrollToBottom);
   background: #ffffff;
   border-top: 1px solid #e0f2fe;
   align-items: flex-end;
+  flex-shrink: 0;
 }
 
 .chat-input :deep(.el-textarea__inner) {
   border-radius: 12px;
   resize: none;
+  overflow-y: hidden;
 }
 
 .send-btn {
