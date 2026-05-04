@@ -36,13 +36,13 @@
         size="large"
         class="profile-form"
       >
-        <el-form-item label="手机号">
-          <el-input v-model="form.phone" disabled>
+        <el-form-item label="邮箱">
+          <el-input v-model="form.email" disabled>
             <template #prefix>
-              <el-icon><Phone /></el-icon>
+              <el-icon><Message /></el-icon>
             </template>
           </el-input>
-          <div class="form-hint">手机号用于登录，暂不支持修改</div>
+          <div class="form-hint">邮箱用于登录，暂不支持修改</div>
         </el-form-item>
 
         <el-form-item label="昵称" prop="nickname">
@@ -130,7 +130,7 @@ import {
   type FormRules,
   type UploadFile,
 } from 'element-plus';
-import { Camera, Phone, Lock } from '@element-plus/icons-vue';
+import { Camera, Message, Lock } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { resolveAssetUrl } from '@/utils/request';
 
@@ -148,7 +148,7 @@ const changingPwd = ref(false);
 const pwdDialogVisible = ref(false);
 
 const form = reactive({
-  phone: '',
+  email: '',
   nickname: '',
   avatar: '' as string,
 });
@@ -188,7 +188,7 @@ const pwdRules: FormRules = {
 };
 
 function syncFormFromStore() {
-  form.phone = userStore.phone || '';
+  form.email = userStore.email || '';
   form.nickname = userStore.nickname || '';
   form.avatar = userStore.avatar || '';
 }

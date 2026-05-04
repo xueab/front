@@ -35,6 +35,13 @@
                   <el-icon><User /></el-icon>
                   <span>个人资料</span>
                 </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="userStore.role === 'ADMIN'"
+                  command="admin"
+                >
+                  <el-icon><Setting /></el-icon>
+                  <span>进入管理台</span>
+                </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
                   <el-icon><SwitchButton /></el-icon>
                   <span>退出登录</span>
@@ -64,6 +71,7 @@ import {
   User,
   UserFilled,
   SwitchButton,
+  Setting,
 } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { resolveAssetUrl } from '@/utils/request';
@@ -88,7 +96,6 @@ const navItems = [
   { path: '/diary', label: '情绪日记' },
   { path: '/chat', label: 'AI 倾听者' },
   { path: '/stats', label: '情绪图谱' },
-  { path: '/healing', label: '疗愈练习' },
 ];
 
 function isActive(path: string) {
@@ -103,6 +110,10 @@ function goHome() {
 async function onCommand(cmd: string | number) {
   if (cmd === 'profile') {
     router.push('/profile');
+    return;
+  }
+  if (cmd === 'admin') {
+    router.push('/admin');
     return;
   }
   if (cmd === 'logout') {

@@ -16,11 +16,11 @@
         size="large"
         @submit.prevent="handleSubmit"
       >
-        <el-form-item label="手机号" prop="phone">
+        <el-form-item label="邮箱" prop="email">
           <el-input
-            v-model="form.phone"
-            placeholder="请输入 11 位手机号"
-            maxlength="11"
+            v-model="form.email"
+            placeholder="请输入邮箱地址"
+            maxlength="64"
             clearable
           />
         </el-form-item>
@@ -67,16 +67,16 @@ const formRef = ref<FormInstance>();
 const loading = ref(false);
 
 const form = reactive({
-  phone: '',
+  email: '',
   password: '',
 });
 
 const rules: FormRules = {
-  phone: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
     {
-      pattern: /^1\d{10}$/,
-      message: '请输入正确的 11 位手机号',
+      type: 'email',
+      message: '请输入正确的邮箱地址',
       trigger: 'blur',
     },
   ],
@@ -93,12 +93,16 @@ async function handleSubmit() {
 
   loading.value = true;
   try {
-    await userStore.login({
-      phone: form.phone,
+    const data = await userStore.login({
+      email: form.email,
       password: form.password,
     });
     ElMessage.success('登录成功');
-    router.push('/');
+    if (data.role === 'ADMIN') {
+      router.push('/admin');
+    } else {
+      router.push('/');
+    }
   } catch (err) {
     console.warn('[Login] 登录失败', err);
   } finally {

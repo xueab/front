@@ -21,7 +21,8 @@ interface StoredUserInfo {
   nickname: string;
   avatar: string | null;
   userId: number;
-  phone: string;
+  email: string;
+  role: string | null;
 }
 
 function readStoredUserInfo(): StoredUserInfo | null {
@@ -45,24 +46,27 @@ export const useUserStore = defineStore('user', () => {
   const nickname = ref<string>(stored?.nickname || '');
   const avatar = ref<string | null>(stored?.avatar ?? null);
   const userId = ref<number | null>(stored?.userId ?? null);
-  const phone = ref<string>(stored?.phone || '');
+  const email = ref<string>(stored?.email || '');
+  const role = ref<string | null>(stored?.role ?? null);
 
   function persist() {
     persistUserInfo({
       nickname: nickname.value,
       avatar: avatar.value,
       userId: userId.value ?? 0,
-      phone: phone.value,
+      email: email.value,
+      role: role.value,
     });
   }
 
-  function setUserInfo(data: LoginResponseData, phoneValue?: string) {
+  function setUserInfo(data: LoginResponseData, emailValue?: string) {
     token.value = data.token;
     nickname.value = data.nickname;
     avatar.value = data.avatar;
     userId.value = data.userId;
-    if (phoneValue !== undefined) {
-      phone.value = phoneValue;
+    role.value = data.role ?? null;
+    if (emailValue !== undefined) {
+      email.value = emailValue;
     }
 
     localStorage.setItem(TOKEN_KEY, data.token);
@@ -73,13 +77,16 @@ export const useUserStore = defineStore('user', () => {
     nickname.value = profile.nickname ?? '';
     avatar.value = profile.avatar ?? null;
     userId.value = profile.userId;
-    phone.value = profile.phone ?? '';
+    email.value = profile.email ?? '';
+    if ((profile as any).role !== undefined) {
+      role.value = (profile as any).role ?? null;
+    }
     persist();
   }
 
   async function login(payload: LoginRequest): Promise<LoginResponseData> {
     const res = await loginApi(payload);
-    setUserInfo(res.data, payload.phone);
+    setUserInfo(res.data, payload.email);
     return res.data;
   }
 
@@ -113,7 +120,8 @@ export const useUserStore = defineStore('user', () => {
     nickname.value = '';
     avatar.value = null;
     userId.value = null;
-    phone.value = '';
+    email.value = '';
+    role.value = null;
 
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_INFO_KEY);
@@ -124,7 +132,8 @@ export const useUserStore = defineStore('user', () => {
     nickname,
     avatar,
     userId,
-    phone,
+    email,
+    role,
     setUserInfo,
     login,
     fetchProfile,

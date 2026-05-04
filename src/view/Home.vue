@@ -25,19 +25,34 @@
       </el-card>
     </section>
 
-    <section class="quote-card">
+    <section class="quote-card" v-loading="quoteLoading">
       <div class="quote-mark">&ldquo;</div>
-      <p class="quote-text">
-        允许自己有情绪，就像允许天空有云朵。它们来了又走，而你始终是你。
-      </p>
+      <div class="quote-body">
+        <p class="quote-text">{{ quote.content }}</p>
+        <div class="quote-foot">
+          <span class="quote-author">— {{ quote.author || '心语空间' }}</span>
+          <el-button
+            text
+            type="primary"
+            size="small"
+            :loading="quoteLoading"
+            @click="loadQuote"
+          >
+            <el-icon><RefreshRight /></el-icon>
+            <span>换一句</span>
+          </el-button>
+        </div>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { RefreshRight } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { getRandomQuote } from '@/api/quote';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -66,14 +81,30 @@ const features = [
     bg: 'linear-gradient(135deg, #dbeafe, #bfdbfe)',
     to: '/stats',
   },
-  {
-    emoji: '🌿',
-    title: '疗愈练习',
-    desc: '几分钟的冥想与呼吸练习，为自己按下暂停键。',
-    bg: 'linear-gradient(135deg, #ecfeff, #cffafe)',
-    to: '/healing',
-  },
 ];
+
+const quoteLoading = ref(false);
+const quote = reactive<{ content: string; author: string | null }>({
+  content: '允许自己有情绪，就像允许天空有云朵。它们来了又走，而你始终是你。',
+  author: '心语空间',
+});
+
+async function loadQuote() {
+  quoteLoading.value = true;
+  try {
+    const res = await getRandomQuote();
+    if (res.data) {
+      quote.content = res.data.content;
+      quote.author = res.data.author;
+    }
+  } catch {
+    // 全局拦截器已提示，保留兜底文案
+  } finally {
+    quoteLoading.value = false;
+  }
+}
+
+onMounted(loadQuote);
 </script>
 
 <style scoped>
@@ -172,14 +203,34 @@ const features = [
   line-height: 1;
   color: #60a5fa;
   font-family: Georgia, serif;
+  flex-shrink: 0;
+}
+
+.quote-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 4px;
 }
 
 .quote-text {
   margin: 0;
-  padding-top: 8px;
   font-size: 15px;
   line-height: 1.8;
   color: #334155;
+}
+
+.quote-foot {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.quote-author {
+  font-size: 12px;
+  color: var(--healing-muted);
 }
 
 @media (max-width: 640px) {

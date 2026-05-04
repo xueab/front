@@ -117,8 +117,8 @@ Authorization: Bearer <token>
 
 | 接口名称 | 方法 | 路径 | 是否鉴权 | 说明 |
 | --- | --- | --- | --- | --- |
-| 发送验证码 | `POST` | `/api/auth/code` | 否 | 发送手机验证码 |
-| 用户注册 | `POST` | `/api/auth/register` | 否 | 手机号注册 |
+| 发送验证码 | `POST` | `/api/auth/code` | 否 | 发送邮箱验证码 |
+| 用户注册 | `POST` | `/api/auth/register` | 否 | 邮箱注册 |
 | 用户登录 | `POST` | `/api/auth/login` | 否 | 登录并获取 Token |
 | 重置密码 | `POST` | `/api/auth/reset-password` | 否 | 通过验证码重置密码 |
 
@@ -137,13 +137,13 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "phone": "13800138000"
+  "email": "user@example.com"
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `phone` | string | 是 | 手机号 |
+| `email` | string | 是 | 邮箱地址 |
 
 #### 成功响应
 
@@ -159,7 +159,7 @@ Authorization: Bearer <token>
 
 - 当前验证码为**模拟发送**
 - 验证码不会通过接口返回给前端
-- 验证码会打印在后端控制台日志中，便于本地开发测试
+- 验证码会通过邮件发送至用户邮箱（开发阶段也可在后端控制台日志中查看）
 - 验证码有效期为 **5 分钟**
 - 验证码校验成功后会立即失效，不能重复使用
 
@@ -176,7 +176,7 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "phone": "13800138000",
+  "email": "user@example.com",
   "password": "123456",
   "code": "654321",
   "nickname": "小明"
@@ -185,9 +185,9 @@ Authorization: Bearer <token>
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `phone` | string | 是 | 手机号，系统按唯一账号处理 |
+| `email` | string | 是 | 邮箱地址，系统按唯一账号处理 |
 | `password` | string | 是 | 登录密码，后端会加密存储 |
-| `code` | string | 是 | 手机验证码 |
+| `code` | string | 是 | 邮箱验证码 |
 | `nickname` | string | 否 | 昵称；不传时后端默认生成 `用户xxxx` |
 
 #### 成功响应
@@ -213,14 +213,14 @@ Authorization: Bearer <token>
 ```json
 {
   "code": 400,
-  "msg": "该手机号已注册",
+  "msg": "该邮箱已注册",
   "data": null
 }
 ```
 
 #### 说明
 
-- 当前项目没有做表单注解校验，前端需要自行校验手机号、密码、验证码是否为空
+- 当前项目没有做表单注解校验，前端需要自行校验邮箱格式、密码、验证码是否为空
 - 昵称可以不传，不传时后端会自动生成默认昵称
 
 ---
@@ -236,14 +236,14 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "phone": "13800138000",
+  "email": "user@example.com",
   "password": "123456"
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `phone` | string | 是 | 手机号 |
+| `email` | string | 是 | 邮箱地址 |
 | `password` | string | 是 | 登录密码 |
 
 #### 成功响应
@@ -311,7 +311,7 @@ Authorization: Bearer jwt-token
 
 ```json
 {
-  "phone": "13800138000",
+  "email": "user@example.com",
   "password": "newPassword123",
   "code": "654321"
 }
@@ -319,9 +319,9 @@ Authorization: Bearer jwt-token
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `phone` | string | 是 | 手机号 |
+| `email` | string | 是 | 邮箱地址 |
 | `password` | string | 是 | 新密码 |
-| `code` | string | 是 | 手机验证码 |
+| `code` | string | 是 | 邮箱验证码 |
 
 #### 成功响应
 
@@ -361,23 +361,23 @@ export interface ApiResponse<T = any> {
 }
 
 export interface SendCodeRequest {
-  phone: string;
+  email: string;
 }
 
 export interface RegisterRequest {
-  phone: string;
+  email: string;
   password: string;
   code: string;
   nickname?: string;
 }
 
 export interface LoginRequest {
-  phone: string;
+  email: string;
   password: string;
 }
 
 export interface ResetPasswordRequest {
-  phone: string;
+  email: string;
   password: string;
   code: string;
 }
@@ -401,7 +401,7 @@ export interface LoginResponseData {
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | number | 用户 ID |
-| `phone` | string | 手机号 |
+| `email` | string | 邮箱地址 |
 | `password` | string | 加密密码 |
 | `nickname` | string | 昵称 |
 | `avatar` | string \| null | 头像 |
@@ -448,8 +448,8 @@ export interface LoginResponseData {
 ## 8. 联调注意事项
 
 1. 当前只有认证接口可直接联调，其他业务功能前端如果要先做页面，可先按第 7 节数据结构预留类型。
-2. 验证码接口目前是模拟实现，联调时需要查看后端控制台中的验证码。
-3. 当前后端未做严格参数校验，前端应补充必填校验、手机号格式校验、密码强度校验。
+2. 验证码接口目前为模拟实现，联调时可在用户邮箱或后端控制台日志中查看验证码。
+3. 当前后端未做严格参数校验，前端应补充必填校验、邮箱格式校验、密码强度校验。
 4. 登录成功后应统一封装 Token 请求头。
 5. 成功时 `msg` 固定是 `success`，真正的提示文案通常在 `data` 里，例如 `"注册成功"`、`"密码重置成功"`。
 

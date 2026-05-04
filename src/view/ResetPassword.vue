@@ -4,7 +4,7 @@
       <template #header>
         <div class="auth-header">
           <h2 class="auth-title">找回密码</h2>
-          <p class="auth-subtitle">使用手机验证码重置登录密码</p>
+          <p class="auth-subtitle">使用邮箱验证码重置登录密码</p>
         </div>
       </template>
 
@@ -16,11 +16,11 @@
         size="large"
         @submit.prevent="handleSubmit"
       >
-        <el-form-item label="手机号" prop="phone">
+        <el-form-item label="邮箱" prop="email">
           <el-input
-            v-model="form.phone"
-            placeholder="请输入 11 位手机号"
-            maxlength="11"
+            v-model="form.email"
+            placeholder="请输入邮箱地址"
+            maxlength="64"
             clearable
           />
         </el-form-item>
@@ -86,17 +86,17 @@ const countdown = ref(0);
 let timer: number | null = null;
 
 const form = reactive({
-  phone: '',
+  email: '',
   code: '',
   password: '',
 });
 
 const rules: FormRules = {
-  phone: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
     {
-      pattern: /^1\d{10}$/,
-      message: '请输入正确的 11 位手机号',
+      type: 'email',
+      message: '请输入正确的邮箱地址',
       trigger: 'blur',
     },
   ],
@@ -124,14 +124,14 @@ function startCountdown() {
 async function handleSendCode() {
   if (!formRef.value) return;
   const valid = await formRef.value
-    .validateField('phone')
+    .validateField('email')
     .catch(() => false);
   if (!valid) return;
 
   sendingCode.value = true;
   try {
-    await sendCode({ phone: form.phone });
-    ElMessage.success(`验证码已发送至 ${form.phone}，请到后端控制台查看`);
+    await sendCode({ email: form.email });
+    ElMessage.success(`验证码已发送至 ${form.email}，请查收邮件`);
     startCountdown();
   } catch (err) {
     console.warn('[ResetPassword] 发送验证码失败', err);
@@ -148,7 +148,7 @@ async function handleSubmit() {
   loading.value = true;
   try {
     const res = await resetPassword({
-      phone: form.phone,
+      email: form.email,
       password: form.password,
       code: form.code,
     });
