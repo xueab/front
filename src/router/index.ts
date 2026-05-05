@@ -46,6 +46,21 @@ const routes: RouteRecordRaw[] = [
         name: 'MoodStats',
         component: () => import('@/view/MoodStats.vue'),
       },
+      {
+        path: 'tags',
+        name: 'MoodTags',
+        component: () => import('@/view/MoodTagManage.vue'),
+      },
+      {
+        path: 'reports',
+        name: 'Reports',
+        component: () => import('@/view/ReportManage.vue'),
+      },
+      {
+        path: 'reports/:id',
+        name: 'ReportDetail',
+        component: () => import('@/view/ReportDetail.vue'),
+      },
     ],
   },
   {

@@ -29,11 +29,11 @@ export function pageKnowledge(params: AdminPageQuery = {}) {
   >('/api/admin/knowledge', { params });
 }
 
-export function getKnowledge(id: string) {
+export function getKnowledge(id: number) {
   return request.get<
     ApiResponse<KnowledgeDocVO>,
     ApiResponse<KnowledgeDocVO>
-  >(`/api/admin/knowledge/${encodeURIComponent(id)}`);
+  >(`/api/admin/knowledge/${id}`);
 }
 
 export function createKnowledge(data: KnowledgeCreateRequest) {
@@ -43,16 +43,16 @@ export function createKnowledge(data: KnowledgeCreateRequest) {
   >('/api/admin/knowledge', data);
 }
 
-export function updateKnowledge(id: string, data: KnowledgeUpdateRequest) {
+export function updateKnowledge(id: number, data: KnowledgeUpdateRequest) {
   return request.put<
     ApiResponse<KnowledgeDocVO>,
     ApiResponse<KnowledgeDocVO>
-  >(`/api/admin/knowledge/${encodeURIComponent(id)}`, data);
+  >(`/api/admin/knowledge/${id}`, data);
 }
 
-export function deleteKnowledge(id: string) {
+export function deleteKnowledge(id: number) {
   return request.delete<ApiResponse<string>, ApiResponse<string>>(
-    `/api/admin/knowledge/${encodeURIComponent(id)}`,
+    `/api/admin/knowledge/${id}`,
   );
 }
 

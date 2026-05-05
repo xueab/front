@@ -42,6 +42,14 @@
                   <el-icon><Setting /></el-icon>
                   <span>进入管理台</span>
                 </el-dropdown-item>
+                <el-dropdown-item command="tags">
+                  <el-icon><PriceTag /></el-icon>
+                  <span>标签管理</span>
+                </el-dropdown-item>
+                <el-dropdown-item command="reports">
+                  <el-icon><Document /></el-icon>
+                  <span>报告管理</span>
+                </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
                   <el-icon><SwitchButton /></el-icon>
                   <span>退出登录</span>
@@ -72,6 +80,8 @@ import {
   UserFilled,
   SwitchButton,
   Setting,
+  PriceTag,
+  Document,
 } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { resolveAssetUrl } from '@/utils/request';
@@ -114,6 +124,14 @@ async function onCommand(cmd: string | number) {
   }
   if (cmd === 'admin') {
     router.push('/admin');
+    return;
+  }
+  if (cmd === 'tags') {
+    router.push('/tags');
+    return;
+  }
+  if (cmd === 'reports') {
+    router.push('/reports');
     return;
   }
   if (cmd === 'logout') {

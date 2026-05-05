@@ -63,12 +63,46 @@
               placeholder="最大"
             />
           </div>
+          <div v-if="allTags.length" class="filter-row">
+            <span class="filter-label">情绪标签</span>
+            <div class="filter-tags">
+              <span
+                v-for="t in allTags"
+                :key="t.id"
+                class="color-tag clickable"
+                :class="{ selected: filterTagId === t.id }"
+                :style="colorTagStyle(t.color)"
+                @click="filterTagId = filterTagId === t.id ? undefined : t.id"
+              >
+                {{ t.name }}
+              </span>
+            </div>
+          </div>
           <div class="filter-actions">
             <el-button size="small" @click="handleResetFilter">重置</el-button>
             <el-button size="small" type="primary" @click="handleApplyFilter">
               应用筛选
             </el-button>
           </div>
+        </div>
+
+        <div v-if="filterTagId != null" class="active-filter-bar">
+          <span>当前筛选：</span>
+          <span
+            v-if="findTag(filterTagId)"
+            class="color-tag"
+            :style="colorTagStyle(findTag(filterTagId)!.color)"
+          >
+            {{ findTag(filterTagId)!.name }}
+          </span>
+          <el-button
+            size="small"
+            text
+            @click="filterTagId = undefined; fetchList()"
+          >
+            <el-icon><Close /></el-icon>
+            <span>清除</span>
+          </el-button>
         </div>
 
         <el-scrollbar class="diary-list" v-loading="loading">
@@ -118,17 +152,15 @@
                 </div>
               </div>
               <p class="diary-content">{{ item.content }}</p>
-              <div v-if="item.tags && item.tags.length" class="diary-tags">
-                <el-tag
-                  v-for="tag in item.tags"
-                  :key="tag"
-                  size="small"
-                  type="info"
-                  round
-                  effect="plain"
+              <div v-if="item.tag" class="diary-tags">
+                <span
+                  class="color-tag"
+                  :style="colorTagStyle(item.tag.color)"
+                  @click.stop="handleFilterByTag(item.tag.id)"
+                  title="点击按此标签筛选"
                 >
-                  {{ tag }}
-                </el-tag>
+                  {{ item.tag.name }}
+                </span>
               </div>
               <div v-if="item.aiAnalysis" class="ai-analysis">
                 <div class="ai-title">
@@ -191,46 +223,21 @@
 
         <div class="tags-block">
           <div class="tags-label">情绪标签</div>
-          <div class="tags-line">
-            <el-tag
-              v-for="tag in form.tags"
-              :key="tag"
-              closable
-              size="small"
-              round
-              @close="removeTag(tag)"
-            >
-              {{ tag }}
-            </el-tag>
-            <el-input
-              v-if="tagInputVisible"
-              ref="tagInputRef"
-              v-model="tagInputValue"
-              size="small"
-              class="tag-input"
-              maxlength="10"
-              @keyup.enter="confirmTagInput"
-              @blur="confirmTagInput"
-            />
-            <el-button
-              v-else
-              size="small"
-              plain
-              round
-              @click="showTagInput"
-            >
-              <el-icon><Plus /></el-icon>
-              <span>添加标签</span>
-            </el-button>
-          </div>
-          <div class="tag-suggest">
-            <span
-              v-for="suggest in tagSuggestions"
-              :key="suggest"
-              class="suggest-item"
-              @click="appendTag(suggest)"
-            >
-              #{{ suggest }}
+          <div class="tags-select-area">
+            <div v-if="allTags.length" class="tags-line">
+              <span
+                v-for="t in allTags"
+                :key="t.id"
+                class="color-tag clickable"
+                :class="{ selected: form.tagId === t.id }"
+                :style="colorTagStyle(t.color)"
+                @click="form.tagId = form.tagId === t.id ? null : t.id"
+              >
+                {{ t.name }}
+              </span>
+            </div>
+            <span v-else class="muted-hint">
+              暂无标签，请先到「标签管理」中创建
             </span>
           </div>
         </div>
@@ -307,62 +314,27 @@
             <div class="detail-section-title">情绪标签</div>
             <template v-if="detailEditing">
               <div class="tags-line">
-                <el-tag
-                  v-for="tag in detailForm.tags"
-                  :key="tag"
-                  closable
-                  size="small"
-                  round
-                  @close="removeDetailTag(tag)"
-                >
-                  {{ tag }}
-                </el-tag>
-                <el-input
-                  v-if="detailTagInputVisible"
-                  ref="detailTagInputRef"
-                  v-model="detailTagInputValue"
-                  size="small"
-                  class="tag-input"
-                  maxlength="10"
-                  @keyup.enter="confirmDetailTagInput"
-                  @blur="confirmDetailTagInput"
-                />
-                <el-button
-                  v-else
-                  size="small"
-                  plain
-                  round
-                  @click="showDetailTagInput"
-                >
-                  <el-icon><Plus /></el-icon>
-                  <span>添加</span>
-                </el-button>
-              </div>
-              <div class="tag-suggest">
                 <span
-                  v-for="suggest in tagSuggestions"
-                  :key="suggest"
-                  class="suggest-item"
-                  :class="{ disabled: detailForm.tags.includes(suggest) }"
-                  @click="appendDetailTag(suggest)"
+                  v-for="t in allTags"
+                  :key="t.id"
+                  class="color-tag clickable"
+                  :class="{ selected: detailForm.tagId === t.id }"
+                  :style="colorTagStyle(t.color)"
+                  @click="detailForm.tagId = detailForm.tagId === t.id ? null : t.id"
                 >
-                  #{{ suggest }}
+                  {{ t.name }}
                 </span>
+                <span v-if="!allTags.length" class="muted-hint">暂无可用标签</span>
               </div>
             </template>
             <div v-else class="tags-line">
-              <template v-if="detailItem.tags && detailItem.tags.length">
-                <el-tag
-                  v-for="tag in detailItem.tags"
-                  :key="tag"
-                  size="small"
-                  type="info"
-                  round
-                  effect="plain"
-                >
-                  {{ tag }}
-                </el-tag>
-              </template>
+              <span
+                v-if="detailItem.tag"
+                class="color-tag"
+                :style="colorTagStyle(detailItem.tag.color)"
+              >
+                {{ detailItem.tag.name }}
+              </span>
               <span v-else class="muted-hint">暂未添加标签</span>
             </div>
           </div>
@@ -426,16 +398,16 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, reactive, ref, onMounted } from 'vue';
+import { reactive, ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
   EditPen,
   Notebook,
   Delete,
   Edit,
-  Plus,
   Filter,
   MagicStick,
+  Close,
 } from '@element-plus/icons-vue';
 import {
   createDiary,
@@ -446,7 +418,8 @@ import {
   getTodayCount,
   generateAiAnalysis,
 } from '@/api/diary';
-import type { DiaryVO, DiaryPageQuery } from '@/types/api';
+import { listMoodTags } from '@/api/moodTag';
+import type { DiaryVO, DiaryPageQuery, MoodTagVO } from '@/types/api';
 
 const loading = ref(false);
 const publishing = ref(false);
@@ -458,10 +431,12 @@ const analysisLoadingId = ref<number | null>(null);
 const editing = ref(false);
 const editingId = ref<number | null>(null);
 
+const allTags = ref<MoodTagVO[]>([]);
+
 const form = reactive({
   moodScore: 6,
   content: '',
-  tags: [] as string[],
+  tagId: null as number | null,
 });
 
 // 分页 / 筛选条件
@@ -480,6 +455,8 @@ const filter = reactive<{
   maxScore: undefined,
 });
 
+const filterTagId = ref<number | undefined>(undefined);
+
 const marks = {
   1: '😭',
   3: '😔',
@@ -487,12 +464,6 @@ const marks = {
   7: '🙂',
   10: '😍',
 };
-
-const tagSuggestions = ['工作', '学习', '家人', '朋友', '睡眠', '运动', '独处'];
-
-const tagInputVisible = ref(false);
-const tagInputValue = ref('');
-const tagInputRef = ref<HTMLInputElement | null>(null);
 
 // ======= 详情弹窗相关状态 =======
 const detailDialogVisible = ref(false);
@@ -505,12 +476,8 @@ const detailItem = ref<DiaryVO | null>(null);
 const detailForm = reactive({
   moodScore: 6,
   content: '',
-  tags: [] as string[],
+  tagId: null as number | null,
 });
-
-const detailTagInputVisible = ref(false);
-const detailTagInputValue = ref('');
-const detailTagInputRef = ref<HTMLInputElement | null>(null);
 
 function moodLabel(score: number) {
   if (score <= 2) return '低落';
@@ -533,10 +500,18 @@ function moodStyle(score: number) {
   };
 }
 
+function colorTagStyle(color: string) {
+  return {
+    background: `${color}18`,
+    color,
+    border: `1px solid ${color}40`,
+  };
+}
+
 function resetForm() {
   form.moodScore = 6;
   form.content = '';
-  form.tags = [];
+  form.tagId = null;
 }
 
 function cancelEdit() {
@@ -545,28 +520,18 @@ function cancelEdit() {
   resetForm();
 }
 
-function showTagInput() {
-  tagInputVisible.value = true;
-  nextTick(() => {
-    (tagInputRef.value as any)?.focus?.();
-  });
-}
-
-function confirmTagInput() {
-  const value = tagInputValue.value.trim();
-  if (value) appendTag(value);
-  tagInputVisible.value = false;
-  tagInputValue.value = '';
-}
-
-function appendTag(tag: string) {
-  if (!form.tags.includes(tag)) {
-    form.tags.push(tag);
+async function fetchAllTags() {
+  try {
+    const res = await listMoodTags();
+    allTags.value = res.data;
+  } catch {
+    // interceptor handles error
   }
 }
 
-function removeTag(tag: string) {
-  form.tags = form.tags.filter((t) => t !== tag);
+function findTag(id: number | null | undefined): MoodTagVO | undefined {
+  if (id == null) return undefined;
+  return allTags.value.find((t) => t.id === id);
 }
 
 async function fetchTodayCount() {
@@ -588,6 +553,7 @@ async function fetchList() {
       endDate: filterRange.value?.[1],
       minScore: filter.minScore,
       maxScore: filter.maxScore,
+      tagId: filterTagId.value,
     });
     diaries.value = res.data.records || [];
     total.value = res.data.total || 0;
@@ -612,6 +578,7 @@ function handleResetFilter() {
   filterRange.value = null;
   filter.minScore = undefined;
   filter.maxScore = undefined;
+  filterTagId.value = undefined;
   query.page = 1;
   fetchList();
 }
@@ -636,7 +603,7 @@ async function handleSubmit() {
       await updateDiary(editingId.value, {
         content: form.content.trim(),
         moodScore: form.moodScore,
-        tags: form.tags,
+        tagId: form.tagId,
       });
       ElMessage.success('已保存修改');
       cancelEdit();
@@ -644,7 +611,7 @@ async function handleSubmit() {
       await createDiary({
         content: form.content.trim(),
         moodScore: form.moodScore,
-        tags: form.tags,
+        tagId: form.tagId,
       });
       ElMessage.success('已记录，愿你今天也温柔待己 🌿');
       resetForm();
@@ -662,7 +629,7 @@ function handleEdit(item: DiaryVO) {
   editingId.value = item.id;
   form.content = item.content;
   form.moodScore = item.score;
-  form.tags = [...(item.tags || [])];
+  form.tagId = item.tag?.id ?? null;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -701,7 +668,7 @@ async function handleAnalysis(item: DiaryVO) {
 function syncDetailForm(data: DiaryVO) {
   detailForm.moodScore = data.score;
   detailForm.content = data.content;
-  detailForm.tags = [...(data.tags || [])];
+  detailForm.tagId = data.tag?.id ?? null;
 }
 
 async function openDetail(item: DiaryVO) {
@@ -735,41 +702,11 @@ function enterDetailEdit() {
 function cancelDetailEdit() {
   if (detailItem.value) syncDetailForm(detailItem.value);
   detailEditing.value = false;
-  detailTagInputVisible.value = false;
-  detailTagInputValue.value = '';
 }
 
 function resetDetailState() {
   detailItem.value = null;
   detailEditing.value = false;
-  detailTagInputVisible.value = false;
-  detailTagInputValue.value = '';
-}
-
-function showDetailTagInput() {
-  detailTagInputVisible.value = true;
-  nextTick(() => {
-    (detailTagInputRef.value as any)?.focus?.();
-  });
-}
-
-function confirmDetailTagInput() {
-  const value = detailTagInputValue.value.trim();
-  if (value && !detailForm.tags.includes(value)) {
-    detailForm.tags.push(value);
-  }
-  detailTagInputVisible.value = false;
-  detailTagInputValue.value = '';
-}
-
-function removeDetailTag(tag: string) {
-  detailForm.tags = detailForm.tags.filter((t) => t !== tag);
-}
-
-function appendDetailTag(tag: string) {
-  if (!detailForm.tags.includes(tag)) {
-    detailForm.tags.push(tag);
-  }
 }
 
 async function handleDetailSave() {
@@ -792,7 +729,7 @@ async function handleDetailSave() {
     const res = await updateDiary(detailItem.value.id, {
       content: detailForm.content.trim(),
       moodScore: detailForm.moodScore,
-      tags: detailForm.tags,
+      tagId: detailForm.tagId,
     });
     detailItem.value = res.data;
     syncDetailForm(res.data);
@@ -841,7 +778,14 @@ async function handleDetailDelete() {
   }
 }
 
+function handleFilterByTag(tagId: number) {
+  filterTagId.value = filterTagId.value === tagId ? undefined : tagId;
+  query.page = 1;
+  fetchList();
+}
+
 onMounted(() => {
+  fetchAllTags();
   fetchList();
   fetchTodayCount();
 });
@@ -1129,32 +1073,52 @@ onMounted(() => {
   align-items: center;
 }
 
-.tag-input {
-  width: 120px;
+.tags-select-area {
+  margin-top: 2px;
 }
 
-.tag-suggest {
-  margin-top: 8px;
+.color-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.color-tag.clickable {
+  cursor: pointer;
+}
+
+.color-tag.clickable:hover {
+  transform: scale(1.05);
+}
+
+.color-tag.selected {
+  box-shadow: 0 0 0 2px currentColor;
+  transform: scale(1.08);
+  font-weight: 600;
+}
+
+.filter-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
-.suggest-item {
-  font-size: 12px;
-  color: #60a5fa;
-  cursor: pointer;
-  transition: color 0.2s ease;
-}
-
-.suggest-item:hover {
-  color: #2563eb;
-}
-
-.suggest-item.disabled {
-  color: #cbd5e1;
-  cursor: not-allowed;
-  pointer-events: none;
+.active-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-bottom: 10px;
+  background: #f0f9ff;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #334155;
+  border: 1px solid #e0f2fe;
 }
 
 .publish-actions {

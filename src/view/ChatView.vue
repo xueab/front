@@ -61,12 +61,25 @@
       <section class="chat-main">
         <div class="chat-header">
           <el-avatar :size="38" :src="aiAvatar" />
-          <div>
+          <div class="chat-header-info">
             <div class="chat-title">小语 · AI 倾听者</div>
             <div class="chat-status">
               <span class="status-dot" />
               在线 · 随时听你说
             </div>
+          </div>
+          <div class="chat-header-actions">
+            <el-button
+              v-if="activeId !== null"
+              size="small"
+              round
+              :loading="generatingReport"
+              :disabled="sending"
+              @click="handleGenerateReport"
+            >
+              <el-icon v-if="!generatingReport"><Document /></el-icon>
+              <span>{{ hasReport ? '查看报告' : '生成报告' }}</span>
+            </el-button>
           </div>
         </div>
 
@@ -145,17 +158,19 @@
 
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, onMounted, onBeforeUnmount } from 'vue';
-import { ChatDotRound, Plus, Loading } from '@element-plus/icons-vue';
+import { ChatDotRound, Plus, Loading, Document } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import MarkdownIt from 'markdown-it';
 import { useUserStore } from '@/stores/user';
 import { resolveAssetUrl } from '@/utils/request';
+import { useRouter } from 'vue-router';
 import {
   createChatSession,
   getChatSessions,
   getChatMessages,
   streamChatReply,
 } from '@/api/chat';
+import { generateReport, getReportBySession } from '@/api/chatReport';
 import type { ChatSessionVO, ChatMessageVO } from '@/types/api';
 
 interface ChatMessage {
@@ -174,6 +189,7 @@ interface ChatSessionItem {
   preview: string;
 }
 
+const router = useRouter();
 const userStore = useUserStore();
 
 const md = new MarkdownIt({
@@ -221,6 +237,10 @@ const loadingMessages = ref(false);
 
 /** 按 sessionId 缓存消息列表；key='new' 保存未创建会话前的临时消息 */
 const messagesMap = ref<Record<string, ChatMessage[]>>({ new: [] });
+
+const generatingReport = ref(false);
+const hasReport = ref(false);
+const reportId = ref<number | null>(null);
 
 let tempMsgSeq = -1;
 function nextTempId() {
@@ -297,6 +317,7 @@ async function activateSession(id: number) {
       loadingMessages.value = false;
     }
   }
+  checkReport(id);
   scrollToBottom();
 }
 
@@ -306,6 +327,8 @@ function newSession() {
     return;
   }
   activeId.value = null;
+  hasReport.value = false;
+  reportId.value = null;
   messagesMap.value.new = [];
   scrollToBottom();
 }
@@ -457,6 +480,38 @@ async function sendMessage() {
   }
 }
 
+async function checkReport(sessionId: number) {
+  hasReport.value = false;
+  reportId.value = null;
+  try {
+    const res = await getReportBySession(sessionId);
+    if (res.code === 200 && res.data) {
+      hasReport.value = true;
+      reportId.value = res.data.id;
+    }
+  } catch {
+    hasReport.value = false;
+  }
+}
+
+async function handleGenerateReport() {
+  if (activeId.value === null) return;
+  if (hasReport.value && reportId.value !== null) {
+    router.push(`/reports/${reportId.value}`);
+    return;
+  }
+  generatingReport.value = true;
+  try {
+    const res = await generateReport(activeId.value);
+    ElMessage.success('报告生成成功');
+    router.push(`/reports/${res.data.id}`);
+  } catch {
+    // interceptor handles error
+  } finally {
+    generatingReport.value = false;
+  }
+}
+
 onMounted(async () => {
   await loadSessions();
   // 默认进入「新对话」状态，等待用户开始
@@ -589,6 +644,15 @@ onBeforeUnmount(() => {
   padding: 14px 20px;
   background: #ffffff;
   border-bottom: 1px solid #e0f2fe;
+  flex-shrink: 0;
+}
+
+.chat-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-header-actions {
   flex-shrink: 0;
 }
 

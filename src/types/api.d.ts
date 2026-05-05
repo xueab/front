@@ -65,15 +65,21 @@ export interface PageResult<T> {
   pages: number;
 }
 
+// ===================== 情绪标签 =====================
+export interface MoodTagVO {
+  id: number;
+  name: string;
+  color: string;
+  createdAt: string;
+}
+
 // ===================== 情绪日记 =====================
 export interface DiaryVO {
   id: number;
-  // yyyy-MM-dd HH:mm
   date: string;
   content: string;
-  // 情绪分值 1-10（后端字段名 score，供前端直接使用）
   score: number;
-  tags: string[];
+  tag: MoodTagVO | null;
   aiAnalysis: string | null;
   createdAt: string;
 }
@@ -81,13 +87,13 @@ export interface DiaryVO {
 export interface CreateDiaryRequest {
   content: string;
   moodScore: number;
-  tags?: string[];
+  tagId?: number | null;
 }
 
 export interface UpdateDiaryRequest {
   content: string;
   moodScore: number;
-  tags?: string[];
+  tagId?: number | null;
 }
 
 export interface DiaryPageQuery {
@@ -97,6 +103,7 @@ export interface DiaryPageQuery {
   endDate?: string;
   minScore?: number;
   maxScore?: number;
+  tagId?: number;
 }
 
 export interface CreateDiaryResponse {
@@ -185,21 +192,24 @@ export interface AdminPageQuery {
 
 // ===================== 管理员端 - 知识文档 =====================
 export interface KnowledgeDocVO {
-  id: string;
-  filename: string;
+  id: number;
+  docKey: string;
   title: string;
-  size: number;
+  category: string;
+  createdAt: string;
   updatedAt: string;
   content: string | null;
 }
 
 export interface KnowledgeCreateRequest {
-  id: string;
+  docKey: string;
+  category?: string;
   content: string;
 }
 
 export interface KnowledgeUpdateRequest {
   content: string;
+  category?: string;
 }
 
 export interface KnowledgeReindexResult {
@@ -303,4 +313,33 @@ export interface RiskUserQuery {
   days?: 7 | 14 | 30;
   level?: string;
   limit?: number;
+}
+
+// ===================== 对话报告 =====================
+export interface ChatReportVO {
+  id: number;
+  sessionId: number;
+  sessionTitle: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReportPageResult {
+  total: number;
+  page: number;
+  size: number;
+  records: ChatReportVO[];
+}
+
+export interface ReportPageQuery {
+  page?: number;
+  size?: number;
+  keyword?: string;
+}
+
+export interface UpdateReportRequest {
+  title: string;
+  content: string;
 }
